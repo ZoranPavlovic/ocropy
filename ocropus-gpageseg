@@ -414,6 +414,13 @@ class GPageSeg(object):
 
         return binary, gray
 
+    def prep_rgb_segmentation(self, lines, lsort, segmentation):
+        nlabels = np.amax(segmentation) + 1
+        renumber = np.zeros(nlabels, 'i')
+        for i, v in enumerate(lsort): renumber[lines[v].label] = 0x010000 + (i + 1)
+        rgb_segmentation = renumber[segmentation]
+        return rgb_segmentation
+
     ################################################################
     ### Processing each file.
     ################################################################
@@ -455,10 +462,7 @@ class GPageSeg(object):
 
         # renumber the labels so that they conform to the specs
 
-        nlabels = np.amax(segmentation) + 1
-        renumber = np.zeros(nlabels, 'i')
-        for i, v in enumerate(lsort): renumber[lines[v].label] = 0x010000 + (i + 1)
-        segmentation = renumber[segmentation]
+        rgb_segmentation = self.prep_rgb_segmentation(lines, lsort, segmentation)
 
         # finally, output everything
 
@@ -466,7 +470,7 @@ class GPageSeg(object):
         if not os.path.exists(outputdir):
             os.mkdir(outputdir)
         lines = [lines[i] for i in lsort]
-        ocrolib.write_page_segmentation("%s.pseg.png" % outputdir, segmentation)
+        ocrolib.write_page_segmentation("%s.pseg.png" % outputdir, rgb_segmentation)
         cleaned = ocrolib.remove_noise(binary, self.args.noise)
         for i, l in enumerate(lines):
             binline = psegutils.extract_masked(1 - cleaned, l, pad=self.args.pad, expand=self.args.expand)
