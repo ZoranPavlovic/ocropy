@@ -415,26 +415,16 @@ class GPageSeg(object):
         return binary, gray
 
     def prep_rgb_segmentation(self, lines, lsort, segmentation):
+        # renumber the labels so that they conform to the specs
         nlabels = np.amax(segmentation) + 1
         renumber = np.zeros(nlabels, 'i')
         for i, v in enumerate(lsort): renumber[lines[v].label] = 0x010000 + (i + 1)
         rgb_segmentation = renumber[segmentation]
         return rgb_segmentation
 
-    ################################################################
-    ### Processing each file.
-    ################################################################
-    def process(self, job):
-        fname, i = job
-        base, _ = ocrolib.allsplitext(fname)
-        outputdir = base
-
-        binary, gray = self.load_data(base, fname)
-
-        if self.args.scale == 0:
+    def extract_lines(self, binary, gray, scale=0, output_rgb=True):
+        if scale == 0:
             scale = psegutils.estimate_scale(binary)
-        else:
-            scale = self.args.scale
 
         logger.info("scale %f" % (scale))
         if np.isnan(scale) or scale > 1000.0:
@@ -443,44 +433,82 @@ class GPageSeg(object):
         if scale < self.args.minscale:
             raise ProcessingException("scale (%g) less than --minscale [%g]" % (scale, self.args.scale))
 
-        logger.info("computing segmentation")
-
         segmentation = self.compute_segmentation(binary, scale)
         line_count = np.amax(segmentation)
 
         if line_count > self.args.maxlines:
-            raise ProcessingException("%s: too many lines %g" % (line_count))
+            raise ProcessingException("%s: too many lines %g" % line_count)
 
-        logger.info("number of lines %g" % np.amax(segmentation))
+        logger.info("number of lines %g" % line_count)
 
         # compute the reading order
 
         logger.info("finding reading order")
+
         lines = psegutils.compute_lines(segmentation, scale)
         order = psegutils.reading_order([l.bounds for l in lines])
         lsort = psegutils.topsort(order)
 
-        # renumber the labels so that they conform to the specs
+        sorted_lines = [lines[i] for i in lsort]
 
-        rgb_segmentation = self.prep_rgb_segmentation(lines, lsort, segmentation)
+        if output_rgb:
+            rgb_segmentation = self.prep_rgb_segmentation(lines, lsort, segmentation)
+        else:
+            rgb_segmentation = None
+
+        denoised_binary = ocrolib.remove_noise(binary, self.args.noise)
+        bin_images = self.extract_binary_lines(denoised_binary, sorted_lines)
+        gray_images = self.extract_gray_lines(gray, sorted_lines)
+
+        return bin_images, gray_images, rgb_segmentation, scale
+
+    def extract_binary_lines(self, cleaned, sorted_lines):
+        out_lines = []
+        for index, l in enumerate(sorted_lines):
+            out_lines.append(psegutils.extract_masked(1 - cleaned, l, pad=self.args.pad, expand=self.args.expand))
+        return out_lines
+
+    def extract_gray_lines(self, gray_image, sorted_lines):
+        if not self.args.gray:
+            return []
+
+        out_lines = []
+        for index, l in enumerate(sorted_lines):
+            gray_line = psegutils.extract_masked(gray_image, l, pad=self.args.pad, expand=self.args.expand)
+            out_lines.append(gray_line)
+
+        return out_lines
+
+    ################################################################
+    ### Processing each file.
+    ################################################################
+    def process(self, job):
+        fname, job_index = job
+        base, _ = ocrolib.allsplitext(fname)
+        outputdir = base
+
+        binary, gray = self.load_data(base, fname)
+
+        logger.info("computing segmentation")
+
+        bin_images, gray_images, rgb_segmentation, scale = self.extract_lines(binary, gray, self.args.scale)
 
         # finally, output everything
 
         logger.info("writing lines")
+
         if not os.path.exists(outputdir):
             os.mkdir(outputdir)
-        lines = [lines[i] for i in lsort]
-        ocrolib.write_page_segmentation("%s.pseg.png" % outputdir, rgb_segmentation)
-        cleaned = ocrolib.remove_noise(binary, self.args.noise)
-        for i, l in enumerate(lines):
-            binline = psegutils.extract_masked(1 - cleaned, l, pad=self.args.pad, expand=self.args.expand)
-            ocrolib.write_image_binary("%s/01%04x.bin.png" % (outputdir, i + 1), binline)
-            if self.args.gray:
-                grayline = psegutils.extract_masked(gray, l, pad=self.args.pad, expand=self.args.expand)
-                ocrolib.write_image_gray("%s/01%04x.nrm.png" % (outputdir, i + 1), grayline)
-        logger.info("%6d  %s %4.1f %d" % (i, fname, scale, len(lines)))
 
-        logger.info("%4.1f %d" % (scale, len(lines)))
+        ocrolib.write_page_segmentation("%s.pseg.png" % outputdir, rgb_segmentation)
+
+        for index, binline in enumerate(bin_images):
+            ocrolib.write_image_binary("%s/01%04x.bin.png" % (outputdir, index + 1), binline)
+
+        for index, grayline in enumerate(gray_images):
+            ocrolib.write_image_gray("%s/01%04x.nrm.png" % (outputdir, index + 1), grayline)
+
+        logger.info("%6d %s %4.1f %d" % (job_index, fname, scale, len(bin_images)))
 
 
 def safe_process1(job, args):
