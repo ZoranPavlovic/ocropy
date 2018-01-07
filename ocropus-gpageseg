@@ -323,7 +323,10 @@ class GPageSeg(object):
         seeds = np.zeros(binary.shape, 'i')
         delta = max(3, int(scale / 2))
         for x in range(bmarked.shape[1]):
-            transitions = sorted([(y,1) for y in self.find(bmarked[:,x])]+[(y,0) for y in self.find(tmarked[:,x])])[::-1]
+            transitions = sorted(
+                [(y, 1) for y in self.find(bmarked[:, x])] +
+                [(y, 0) for y in self.find(tmarked[:, x])]
+            )[::-1]
             transitions += [(0, 0)]
             for l in range(len(transitions) - 1):
                 y0, s0 = transitions[l]
@@ -381,7 +384,7 @@ class GPageSeg(object):
     ################################################################
     ### Processing each file.
     ################################################################
-    def process1(self, job):
+    def process(self, job):
         fname, i = job
         base, _ = ocrolib.allsplitext(fname)
         outputdir = base
@@ -470,7 +473,7 @@ def safe_process1(job, args):
     fname, i = job
     try:
         page_segmenter = GPageSeg(args)
-        page_segmenter.process1(job)
+        page_segmenter.process(job)
     except OcropusException as e:
         if e.trace:
             traceback.print_exc()
@@ -484,7 +487,7 @@ def process1(job):
     fname, i, args = job
     try:
         page_segmenter = GPageSeg(args)
-        page_segmenter.process1((fname, i, ))
+        page_segmenter.process((fname, i,))
     except ProcessingException as ex:
         logger.error("%s: %s"(fname, ex.message))
     except Exception as ex:
