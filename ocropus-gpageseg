@@ -381,14 +381,7 @@ class GPageSeg(object):
         segmentation = llabels * binary
         return segmentation
 
-    ################################################################
-    ### Processing each file.
-    ################################################################
-    def process(self, job):
-        fname, i = job
-        base, _ = ocrolib.allsplitext(fname)
-        outputdir = base
-
+    def load_data(self, base, fname):
         try:
             binary = ocrolib.read_image_binary(base + ".bin.png")
         except IOError:
@@ -413,6 +406,18 @@ class GPageSeg(object):
             checktype(gray, GRAYSCALE)
 
         binary = 1 - binary  # invert
+
+        return binary, gray
+
+    ################################################################
+    ### Processing each file.
+    ################################################################
+    def process(self, job):
+        fname, i = job
+        base, _ = ocrolib.allsplitext(fname)
+        outputdir = base
+
+        binary, gray = self.load_data(base, fname)
 
         if self.args.scale == 0:
             scale = psegutils.estimate_scale(binary)
