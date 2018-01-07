@@ -110,7 +110,7 @@ group_column.add_argument('--csminaspect', type=float, default=DEFAULT_CS_MIN_AS
 # output parameters
 group_output = parser.add_argument_group('output parameters')
 group_output.add_argument('--gray', action='store_true',
-                          help='output grayscale lines as well, default: %(default)s')
+                          help='output grayscale lines as well, which are extracted from the grayscale version of the pages, default: %(default)s')
 group_output.add_argument('-p', '--pad', type=int, default=DEFAULT_PAD,
                           help='padding for extracted lines, default: %(default)s')
 group_output.add_argument('-e', '--expand', type=int, default=DEFAULT_EXPAND,
@@ -403,7 +403,12 @@ class GPageSeg(object):
             if os.path.exists(gray_path):
                 logger.info("Loading gray image")
                 gray = ocrolib.read_image_gray(gray_path)
+            else:
+                err_message = "Grayscale version %s not found. Use ocropus-nlbin for creating normalized grayscale version of the pages as well." % gray_path
+                raise ProcessingException(err_message)
             checktype(gray, GRAYSCALE)
+        else:
+            gray = None
 
         binary = 1 - binary  # invert
 
